@@ -1,0 +1,14 @@
+{
+  "name": "My Song",
+  "notes": [
+    {"key": 0, "duration": 500},
+    {"key": 2, "duration": 500},
+    {"key": 4, "duration": 500},
+    {"key": 5, "duration": 500},
+    {"key": 7, "duration": 1000},
+    {"key": 5, "duration": 500},
+    {"key": 4, "duration": 500},
+    {"key": 2, "duration": 500},
+    {"key": 0, "duration": 1000}
+  ]
+}
