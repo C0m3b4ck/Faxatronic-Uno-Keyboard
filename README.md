@@ -44,4 +44,4 @@ A dual-Arduino musical learning keyboard project. Two Arduinos communicate via s
 
 ## License
 
-MIT
+APL 2.0
