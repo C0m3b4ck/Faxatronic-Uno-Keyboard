@@ -210,11 +210,14 @@ void handleSerialInput() {
         keyStates[keyIdx] = true;
         if (!isPaused && waitingForKey && keyIdx == expectedKey) {
           handleCorrectKeyPress(keyIdx);
+          //Serial.println("Correct key! \n"); //debug
         } else if (!isPaused && waitingForKey && keyIdx != expectedKey) {
           handleWrongKeyPress(keyIdx);
+          //Serial.println("Wrong key! \n"); //debug
         }
       }
     } else if (line.startsWith("KEY:UP:")) {
+      //Serial.println("Key up! \n"); //debug
       int keyIdx = line.substring(7).toInt();
       if (keyIdx >= 0 && keyIdx < 11) {
         keyStates[keyIdx] = false;
