@@ -1,6 +1,7 @@
 #include <LiquidCrystal.h>
 #include <Keypad.h>
 #include <avr/pgmspace.h>
+#include <string.h>
 
 const int rs = 13, en = 12, d4 = 11, d5 = 10, d6 = 9, d7 = 8;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
@@ -140,6 +141,7 @@ void setup() {
   Serial.println("LOGIC READY");
 
   lcd.begin(16, 2);
+  delay(50);
   pinMode(buzzerPin, OUTPUT);
   digitalWrite(buzzerPin, LOW);
 
@@ -152,6 +154,7 @@ void showWelcomeScreen() {
   lcd.print("Music Keyboard");
   lcd.setCursor(0, 1);
   lcd.print("Loading...");
+  while (Serial.available()) { Serial.read(); }
   delay(3000);
   currentMenu = MENU_SELECT_SONG;
   selectedSong = 0;
@@ -178,103 +181,136 @@ void loop() {
 }
 
 void handleSerialInput() {
+  char line[64];
+  int idx = 0;
   while (Serial.available()) {
-    String line = Serial.readStringUntil('\n');
-    line.trim();
-    
-    if (receivingSong) {
-      if (line == "SONG:END") {
-        customSongLengths[receivingSongIdx] = receivingNoteCount;
-        receivingSong = false;
-        Serial.print("SONG:SAVED:");
-        Serial.println(receivingSongIdx);
-        lcd.clear();
-        lcd.print("Song Saved!");
-        delay(1000);
-        showSongSelect();
-      } else if (line.startsWith("NOTE:")) {
-        int comma1 = line.indexOf(',', 5);
-        int comma2 = line.indexOf(',', comma1 + 1);
-        if (comma1 > 0 && comma2 > 0) {
-          int keyIdx = line.substring(5, comma1).toInt();
-          int duration = line.substring(comma1 + 1, comma2).toInt();
-          if (receivingNoteCount < MAX_NOTES_PER_SONG && keyIdx >= 0 && keyIdx < 12) {
-            customSongNotes[receivingSongIdx][receivingNoteCount] = {keyIdx, (unsigned long)duration};
-            receivingNoteCount++;
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (idx > 0) {
+        line[idx] = '\0';
+        // Trim whitespace
+        int start = 0;
+        int end = strlen(line) - 1;
+        while (start <= end && (line[start] == ' ' || line[start] == '\t' || line[start] == '\r' || line[start] == '\n')) start++;
+        while (end >= start && (line[end] == ' ' || line[end] == '\t' || line[end] == '\r' || line[end] == '\n')) end--;
+        if (end >= start) {
+          int len = end - start + 1;
+          char trimmed[128];
+          strncpy(trimmed, line + start, len);
+          trimmed[len] = '\0';
+          strcpy(line, trimmed);
+        } else {
+          line[0] = '\0';
+        }
+
+        if (receivingSong) {
+          if (strcmp(line, "SONG:END") == 0) {
+            customSongLengths[receivingSongIdx] = receivingNoteCount;
+            receivingSong = false;
+            Serial.print("SONG:SAVED:");
+            Serial.println(receivingSongIdx);
+            lcd.clear();
+            lcd.print("Song Saved!");
+            delay(1000);
+            showSongSelect();
+          } else if (strncmp(line, "NOTE:", 5) == 0) {
+            char *comma1 = strchr(line + 5, ',');
+            char *comma2 = comma1 ? strchr(comma1 + 1, ',') : NULL;
+            if (comma1 && comma2) {
+              *comma1 = '\0';
+              *comma2 = '\0';
+              int keyIdx = atoi(line + 5);
+              int duration = atoi(comma1 + 1);
+              if (receivingNoteCount < MAX_NOTES_PER_SONG && keyIdx >= 0 && keyIdx < 12) {
+                customSongNotes[receivingSongIdx][receivingNoteCount] = {keyIdx, (unsigned long)duration};
+                receivingNoteCount++;
+              }
+            }
+          }
+          idx = 0;
+          continue;
+        }
+
+        if (strncmp(line, "KEY:DOWN:", 9) == 0) {
+          int keyIdx = atoi(line + 9);
+          if (keyIdx >= 0 && keyIdx < 11) {
+            keyStates[keyIdx] = true;
+            if (!isPaused && waitingForKey && keyIdx == expectedKey) {
+              handleCorrectKeyPress(keyIdx);
+            } else if (!isPaused && waitingForKey && keyIdx != expectedKey) {
+              handleWrongKeyPress(keyIdx);
+            }
+          }
+        } else if (strncmp(line, "KEY:UP:", 7) == 0) {
+          int keyIdx = atoi(line + 7);
+          if (keyIdx >= 0 && keyIdx < 11) {
+            keyStates[keyIdx] = false;
+            if (keyHeld && keyIdx == expectedKey) {
+              keyHeld = false;
+            }
+          }
+        } else if (strcmp(line, "CMD:RESET") == 0) {
+          resetLearning();
+        } else if (strncmp(line, "SONG:NEW:", 9) == 0) {
+          char *secondColon = strchr(line + 9, ':');
+          if (secondColon) {
+            *secondColon = '\0';
+            int idx = atoi(line + 9);
+            if (idx >= 0 && idx < MAX_CUSTOM_SONGS) {
+              receivingSong = true;
+              receivingSongIdx = idx;
+              receivingNoteCount = 0;
+              char *nameStart = secondColon + 1;
+              char *colonInName = strchr(nameStart, ':');
+              if (colonInName) *colonInName = '\0';
+              if (strlen(nameStart) == 0) strcpy(nameStart, "Custom");
+              strncpy(customSongNames[idx], nameStart, 15);
+              customSongNames[idx][15] = '\0';
+              Serial.println("SONG:READY");
+              lcd.clear();
+              lcd.print("Receiving Song");
+              lcd.setCursor(0, 1);
+              lcd.print(customSongNames[idx]);
+            }
+          }
+        } else if (strcmp(line, "SONG:LIST") == 0) {
+          Serial.println("SONG:LIST:START");
+          for (int i = 0; i < NUM_BUILTIN_SONGS; i++) {
+            Serial.print("SONG:BUILTIN:");
+            Serial.print(i);
+            Serial.print(":");
+            Serial.println(songs[i].name);
+          }
+          for (int i = 0; i < MAX_CUSTOM_SONGS; i++) {
+            if (customSongLengths[i] > 0) {
+              Serial.print("SONG:CUSTOM:");
+              Serial.print(i);
+              Serial.print(":");
+              Serial.println(customSongNames[i]);
+            }
+          }
+          Serial.println("SONG:LIST:END");
+        } else if (strncmp(line, "SONG:LOAD:", 10) == 0) {
+          char *colon1 = strchr(line + 10, ':');
+          if (colon1) {
+            *colon1 = '\0';
+            char *type = line + 10;
+            int idx = atoi(colon1 + 1);
+            if (strcmp(type, "BUILTIN") == 0 && idx >= 0 && idx < NUM_BUILTIN_SONGS) {
+              loadSong(idx);
+              currentMenu = MENU_LEARN;
+              showLearningScreen();
+            } else if (strcmp(type, "CUSTOM") == 0 && idx >= 0 && idx < MAX_CUSTOM_SONGS && customSongLengths[idx] > 0) {
+              loadCustomSong(idx);
+              currentMenu = MENU_LEARN;
+              showLearningScreen();
+            }
           }
         }
       }
-      return;
-    }
-    
-    if (line.startsWith("KEY:DOWN:")) {
-      int keyIdx = line.substring(9).toInt();
-      if (keyIdx >= 0 && keyIdx < 11) {
-        keyStates[keyIdx] = true;
-        if (!isPaused && waitingForKey && keyIdx == expectedKey) {
-          handleCorrectKeyPress(keyIdx);
-          //Serial.println("Correct key! \n"); //debug
-        } else if (!isPaused && waitingForKey && keyIdx != expectedKey) {
-          handleWrongKeyPress(keyIdx);
-          //Serial.println("Wrong key! \n"); //debug
-        }
-      }
-    } else if (line.startsWith("KEY:UP:")) {
-      //Serial.println("Key up! \n"); //debug
-      int keyIdx = line.substring(7).toInt();
-      if (keyIdx >= 0 && keyIdx < 11) {
-        keyStates[keyIdx] = false;
-        if (keyHeld && keyIdx == expectedKey) {
-          keyHeld = false;
-        }
-      }
-    } else if (line == "CMD:RESET") {
-      resetLearning();
-    } else if (line.startsWith("SONG:NEW:")) {
-      int idx = line.substring(9).toInt();
-      if (idx >= 0 && idx < MAX_CUSTOM_SONGS) {
-        receivingSong = true;
-        receivingSongIdx = idx;
-        receivingNoteCount = 0;
-        String name = line.substring(line.indexOf(':') + 1);
-        name = name.substring(name.indexOf(':') + 1);
-        name.toCharArray(customSongNames[idx], 16);
-        Serial.println("SONG:READY");
-        lcd.clear();
-        lcd.print("Receiving Song");
-        lcd.setCursor(0, 1);
-        lcd.print(customSongNames[idx]);
-      }
-    } else if (line == "SONG:LIST") {
-      Serial.println("SONG:LIST:START");
-      for (int i = 0; i < NUM_BUILTIN_SONGS; i++) {
-        Serial.print("SONG:BUILTIN:");
-        Serial.print(i);
-        Serial.print(":");
-        Serial.println(songs[i].name);
-      }
-      for (int i = 0; i < MAX_CUSTOM_SONGS; i++) {
-        if (customSongLengths[i] > 0) {
-          Serial.print("SONG:CUSTOM:");
-          Serial.print(i);
-          Serial.print(":");
-          Serial.println(customSongNames[i]);
-        }
-      }
-      Serial.println("SONG:LIST:END");
-    } else if (line.startsWith("SONG:LOAD:")) {
-      int typeEnd = line.indexOf(':', 10);
-      String type = line.substring(10, typeEnd);
-      int idx = line.substring(typeEnd + 1).toInt();
-      if (type == "BUILTIN" && idx >= 0 && idx < NUM_BUILTIN_SONGS) {
-        loadSong(idx);
-        currentMenu = MENU_LEARN;
-        showLearningScreen();
-      } else if (type == "CUSTOM" && idx >= 0 && idx < MAX_CUSTOM_SONGS && customSongLengths[idx] > 0) {
-        loadCustomSong(idx);
-        currentMenu = MENU_LEARN;
-        showLearningScreen();
-      }
+      idx = 0;
+    } else if (idx < 127) {
+      line[idx++] = c;
     }
   }
 }
@@ -475,6 +511,7 @@ void handleWrongKeyPress(int keyIdx) {
 }
 
 void advanceToNextNote() {
+  if (learningLength <= 0) return;
   songPosition++;
   if (songPosition >= learningLength) {
     songPosition = 0;
@@ -503,7 +540,7 @@ void mergeNotes(SongNote* source, int sourceLen, SongNote* dest, int& destLen) {
   if (sourceLen <= 0) return;
   int currentKey = source[0].keyIndex;
   unsigned long currentDur = source[0].duration;
-  for (int i = 1; i < sourceLen; i++) {
+  for (int i = 1; i < sourceLen && destLen < MAX_NOTES_PER_SONG; i++) {
     if (source[i].keyIndex == currentKey) {
       currentDur += source[i].duration;
     } else {
@@ -514,9 +551,11 @@ void mergeNotes(SongNote* source, int sourceLen, SongNote* dest, int& destLen) {
       currentDur = source[i].duration;
     }
   }
-  dest[destLen].keyIndex = currentKey;
-  dest[destLen].duration = currentDur;
-  destLen++;
+  if (destLen < MAX_NOTES_PER_SONG) {
+    dest[destLen].keyIndex = currentKey;
+    dest[destLen].duration = currentDur;
+    destLen++;
+  }
 }
 
 // ============================================================
@@ -529,8 +568,13 @@ void loadSong(int songIdx) {
   correctPresses = 0;
   wrongPresses = 0;
   mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
-  waitingForKey = true;
-  expectedKey = learningNotes[0].keyIndex;
+  if (learningLength > 0) {
+    waitingForKey = true;
+    expectedKey = learningNotes[0].keyIndex;
+  } else {
+    waitingForKey = false;
+    expectedKey = -1;
+  }
   keyHeld = false;
   isPaused = false;
   totalPausedTime = 0;
@@ -547,8 +591,13 @@ void loadCustomSong(int idx) {
   correctPresses = 0;
   wrongPresses = 0;
   mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
-  waitingForKey = true;
-  expectedKey = learningNotes[0].keyIndex;
+  if (learningLength > 0) {
+    waitingForKey = true;
+    expectedKey = learningNotes[0].keyIndex;
+  } else {
+    waitingForKey = false;
+    expectedKey = -1;
+  }
   keyHeld = false;
   isPaused = false;
   totalPausedTime = 0;
@@ -560,13 +609,18 @@ void resetLearning() {
   correctPresses = 0;
   wrongPresses = 0;
   mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
-  waitingForKey = true;
-  expectedKey = learningNotes[0].keyIndex;
+  if (learningLength > 0) {
+    waitingForKey = true;
+    expectedKey = learningNotes[0].keyIndex;
+  } else {
+    waitingForKey = false;
+    expectedKey = -1;
+  }
   keyHeld = false;
   isPaused = false;
   totalPausedTime = 0;
   scrollOffset = 0;
-  showLearningScreen();
+  if (learningLength > 0) showLearningScreen();
 }
 
 void pauseSong() {
@@ -592,16 +646,22 @@ void resumeSong() {
 void showLearningScreen() {
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Press: ");
-  lcd.print(getNoteName(expectedKey));
-  lcd.print("  ");
-  lcd.setCursor(0, 1);
-  lcd.print(currentSong->name);
-  lcd.print(" ");
-  lcd.print(songPosition + 1);
-  lcd.print("/");
-  lcd.print(learningLength);
-  lcd.print("    ");
+  if (learningLength > 0) {
+    lcd.print("Press: ");
+    lcd.print(getNoteName(expectedKey));
+    lcd.print("  ");
+    lcd.setCursor(0, 1);
+    lcd.print(currentSong->name);
+    lcd.print(" ");
+    lcd.print(songPosition + 1);
+    lcd.print("/");
+    lcd.print(learningLength);
+    lcd.print("    ");
+  } else {
+    lcd.print("No notes");
+    lcd.setCursor(0, 1);
+    lcd.print("Press # to menu");
+  }
 }
 
 void updateTimerDisplay() {

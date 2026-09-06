@@ -1,6 +1,8 @@
 #include <LiquidCrystal.h>
 #include <Keypad.h>
 #include <avr/pgmspace.h>
+#include <string.h>
+#include <stdlib.h>
 
 // ============================================================
 // LCD
@@ -53,12 +55,10 @@ Keypad matrixKeypad = Keypad(
   MATRIX_COLS
 );
 
+
 // ============================================================
 // NOTE NAMES
-//
-// IMPORTANT:
-// The music player has 10 physical keys, so only indexes
-// 0-9 are used.
+// Stored in PROGMEM to reduce SRAM usage.
 // ============================================================
 
 const char noteNames_0[] PROGMEM = "C4";
@@ -87,28 +87,29 @@ const char* const noteNames[] PROGMEM = {
 
 const int NUM_NOTES = 10;
 
+
 // ============================================================
 // SONG STRUCTURES
 // ============================================================
 
 struct SongNote {
-  int keyIndex;
-  unsigned long duration;
+  byte keyIndex;
+  unsigned int duration;
 };
 
 struct Song {
   const char* name;
-  SongNote* notes;
-  int length;
+  const SongNote* notes;
+  byte length;
 };
+
 
 // ============================================================
 // BUILT-IN SONGS
-// All note indexes are now 0-9.
 // ============================================================
 
 // Mary Had a Little Lamb
-SongNote song1_notes[] = {
+const SongNote song1_notes[] PROGMEM = {
   {4, 500},
   {2, 500},
   {0, 500},
@@ -124,8 +125,9 @@ SongNote song1_notes[] = {
   {7, 1000}
 };
 
+
 // Twinkle Twinkle
-SongNote song2_notes[] = {
+const SongNote song2_notes[] PROGMEM = {
   {0, 400},
   {0, 400},
   {7, 400},
@@ -143,8 +145,9 @@ SongNote song2_notes[] = {
   {0, 800}
 };
 
+
 // Scale Up
-SongNote song3_notes[] = {
+const SongNote song3_notes[] PROGMEM = {
   {0, 300},
   {2, 300},
   {4, 300},
@@ -160,8 +163,9 @@ SongNote song3_notes[] = {
   {0, 600}
 };
 
+
 // Wolf3D
-SongNote song4_notes[] = {
+const SongNote song4_notes[] PROGMEM = {
   {7, 300},
   {7, 300},
   {7, 300},
@@ -196,8 +200,9 @@ SongNote song4_notes[] = {
   {5, 400}
 };
 
+
 // STALKER
-SongNote song5_notes[] = {
+const SongNote song5_notes[] PROGMEM = {
   {4, 500},
   {4, 500},
   {4, 500},
@@ -232,18 +237,36 @@ SongNote song5_notes[] = {
   {7, 1000}
 };
 
-Song songs[] = {
-  {"Mary Lamb", song1_notes, sizeof(song1_notes) / sizeof(song1_notes[0])},
-  {"Twinkle", song2_notes, sizeof(song2_notes) / sizeof(song2_notes[0])},
-  {"Scale Up", song3_notes, sizeof(song3_notes) / sizeof(song3_notes[0])},
-  {"Wolf3D", song4_notes, sizeof(song4_notes) / sizeof(song4_notes[0])},
-  {"STALKER", song5_notes, sizeof(song5_notes) / sizeof(song5_notes[0])}
+
+// ============================================================
+// SONG NAMES
+// Stored in PROGMEM.
+// ============================================================
+
+const char songName0[] PROGMEM = "Mary Lamb";
+const char songName1[] PROGMEM = "Twinkle";
+const char songName2[] PROGMEM = "Scale Up";
+const char songName3[] PROGMEM = "Wolf3D";
+const char songName4[] PROGMEM = "STALKER";
+
+
+// ============================================================
+// SONG TABLE
+// ============================================================
+
+const Song songs[] = {
+  {songName0, song1_notes, sizeof(song1_notes) / sizeof(song1_notes[0])},
+  {songName1, song2_notes, sizeof(song2_notes) / sizeof(song2_notes[0])},
+  {songName2, song3_notes, sizeof(song3_notes) / sizeof(song3_notes[0])},
+  {songName3, song4_notes, sizeof(song4_notes) / sizeof(song4_notes[0])},
+  {songName4, song5_notes, sizeof(song5_notes) / sizeof(song5_notes[0])}
 };
 
-const int NUM_BUILTIN_SONGS = 5;
-const int MAX_CUSTOM_SONGS = 1;
-const int MAX_NOTES_PER_SONG = 22;
-const int TOTAL_SONGS = NUM_BUILTIN_SONGS + MAX_CUSTOM_SONGS;
+const byte NUM_BUILTIN_SONGS = 5;
+const byte MAX_CUSTOM_SONGS = 1;
+const byte MAX_NOTES_PER_SONG = 22;
+const byte TOTAL_SONGS = NUM_BUILTIN_SONGS + MAX_CUSTOM_SONGS;
+
 
 // ============================================================
 // CUSTOM SONGS
@@ -251,38 +274,40 @@ const int TOTAL_SONGS = NUM_BUILTIN_SONGS + MAX_CUSTOM_SONGS;
 
 SongNote customSongNotes[MAX_CUSTOM_SONGS][MAX_NOTES_PER_SONG];
 
-int customSongLengths[MAX_CUSTOM_SONGS] = {0};
+byte customSongLengths[MAX_CUSTOM_SONGS] = {0};
 
 char customSongNames[MAX_CUSTOM_SONGS][16] = {
   "Custom 1"
 };
 
 bool receivingSong = false;
-int receivingSongIdx = -1;
-int receivingNoteCount = 0;
+byte receivingSongIdx = 0;
+byte receivingNoteCount = 0;
+
 
 // ============================================================
 // CURRENT LEARNING SONG
 // ============================================================
 
-Song* currentSong = &songs[0];
+const Song* currentSong = &songs[0];
 
-int songPosition = 0;
-int correctPresses = 0;
-int wrongPresses = 0;
+byte songPosition = 0;
+unsigned int correctPresses = 0;
+unsigned int wrongPresses = 0;
 
 bool waitingForKey = false;
-int expectedKey = -1;
+byte expectedKey = 0;
 
 unsigned long keyPressStartTime = 0;
 bool keyHeld = false;
 
 SongNote learningNotes[MAX_NOTES_PER_SONG];
-int learningLength = 0;
+byte learningLength = 0;
 
 bool isPaused = false;
 unsigned long pauseStartTime = 0;
 unsigned long totalPausedTime = 0;
+
 
 // ============================================================
 // MENU
@@ -300,9 +325,9 @@ enum MenuState {
 
 MenuState currentMenu = MENU_WELCOME;
 
-int selectedSong = 0;
+byte selectedSong = 0;
 
-int scrollOffset = 0;
+byte scrollOffset = 0;
 unsigned long lastScrollTime = 0;
 
 unsigned long menuEnterTime = 0;
@@ -311,7 +336,8 @@ bool autoStartPlayback = false;
 bool autoPlayEnabled = false;
 
 bool enteringSongNumber = false;
-int songNumberBuffer = 0;
+byte songNumberBuffer = 0;
+
 
 // ============================================================
 // PLAYBACK
@@ -324,18 +350,100 @@ unsigned long playbackStartTime = 0;
 unsigned long playbackPausedTime = 0;
 unsigned long totalPausedPlaybackTime = 0;
 
-int playbackNoteIndex = 0;
+byte playbackNoteIndex = 0;
 
 float playbackSpeed = 1.0;
 
+
+// ============================================================
+// SERIAL INPUT BUFFER
+//
+// Non-blocking parser.
+// This is important because key messages must not be delayed
+// while the Arduino is processing other serial data.
+// ============================================================
+
+const byte SERIAL_LINE_SIZE = 96;
+
+char serialLine[SERIAL_LINE_SIZE];
+byte serialLinePos = 0;
+
+
+// ============================================================
+// FORWARD DECLARATIONS
+// ============================================================
+
+void showWelcomeScreen();
+void showSongSelect();
+void showConfirmPlay();
+void showLearningScreen();
+void showStatsScreen();
+void showPlaybackScreen();
+
+void handleSerialInput();
+void processSerialLine(char* line);
+
+void handleMatrixKeypad();
+
+void handleCorrectKeyPress(byte keyIdx);
+void handleWrongKeyPress(byte keyIdx);
+void checkKeyPressTiming();
+void advanceToNextNote();
+
+void loadSong(byte songIdx);
+void loadCustomSong(byte idx);
+void resetLearning();
+
+void pauseSong();
+void resumeSong();
+
+void updateTimerDisplay();
+void updateBottomLine();
+void handleScrollDisplay();
+
+void confirmSongSelection();
+void loadAndPlaySong();
+
+void startPlayback();
+void stopPlayback();
+void togglePlaybackPause();
+void handlePlayback();
+
+void beep(unsigned int duration);
+
+const char* getNoteName(byte idx);
+
+void mergeNotes(
+  const SongNote* source,
+  byte sourceLen,
+  SongNote* dest,
+  byte& destLen
+);
+
+
+// ============================================================
+// STARTUP
+// ============================================================
+
 void showWelcomeScreen() {
+
   lcd.clear();
 
   lcd.setCursor(0, 0);
-  lcd.print("Music Keyboard");
+  lcd.print(F("Music Keyboard"));
 
   lcd.setCursor(0, 1);
-  lcd.print("Loading...");
+  lcd.print(F("Loading..."));
+
+  // ----------------------------------------------------------
+  // Clear any stale serial data.
+  // ----------------------------------------------------------
+
+  while (Serial.available() > 0) {
+    Serial.read();
+  }
+
+  serialLinePos = 0;
 
   delay(3000);
 
@@ -356,24 +464,44 @@ void setup() {
 
   Serial.begin(9600);
 
-  Serial.println("LOGIC READY");
-
   lcd.begin(16, 2);
+
+  // Required startup delay after LCD initialization.
+  delay(50);
 
   pinMode(buzzerPin, OUTPUT);
   digitalWrite(buzzerPin, LOW);
 
+  serialLinePos = 0;
+
+  Serial.println(F("LOGIC READY"));
+
   showWelcomeScreen();
 }
 
+
 // ============================================================
-// LOOP
+// MAIN LOOP
 // ============================================================
 
 void loop() {
 
+  // ----------------------------------------------------------
+  // Process only a small amount of serial data per loop.
+  // This prevents serial handling from starving the keypad.
+  // ----------------------------------------------------------
+
   handleSerialInput();
+
+  // ----------------------------------------------------------
+  // Physical matrix keypad
+  // ----------------------------------------------------------
+
   handleMatrixKeypad();
+
+  // ----------------------------------------------------------
+  // Automatic playback
+  // ----------------------------------------------------------
 
   if (
     currentMenu == MENU_SELECT_SONG &&
@@ -389,13 +517,27 @@ void loop() {
     }
   }
 
+  // ----------------------------------------------------------
+  // Learning timing
+  // ----------------------------------------------------------
+
   if (!isPaused && !isPlaying) {
     checkKeyPressTiming();
   }
 
+  // ----------------------------------------------------------
+  // LCD scrolling
+  // ----------------------------------------------------------
+
   handleScrollDisplay();
+
+  // ----------------------------------------------------------
+  // Playback
+  // ----------------------------------------------------------
+
   handlePlayback();
 }
+
 
 // ============================================================
 // SERIAL INPUT
@@ -403,303 +545,492 @@ void loop() {
 
 void handleSerialInput() {
 
-  while (Serial.available()) {
+  // Process at most 32 characters per call.
+  // This prevents a large serial burst from blocking the loop.
 
-    String line = Serial.readStringUntil('\n');
+  byte processed = 0;
 
-    line.trim();
+  while (
+    Serial.available() > 0 &&
+    processed < 32
+  ) {
 
-    if (line.length() == 0) {
-      continue;
-    }
+    char c = Serial.read();
+
+    processed++;
 
     // --------------------------------------------------------
-    // CUSTOM SONG RECEIVING
+    // End of line
     // --------------------------------------------------------
 
-    if (receivingSong) {
+    if (c == '\n' || c == '\r') {
 
-      if (line == "SONG:END") {
+      if (serialLinePos > 0) {
 
-        customSongLengths[receivingSongIdx] = receivingNoteCount;
+        serialLine[serialLinePos] = '\0';
 
-        receivingSong = false;
+        processSerialLine(serialLine);
 
-        Serial.print("SONG:SAVED:");
-        Serial.println(receivingSongIdx);
-
-        lcd.clear();
-        lcd.print("Song Saved!");
-
-        delay(1000);
-
-        showSongSelect();
-
-        continue;
-      }
-
-      if (line.startsWith("NOTE:")) {
-
-        int comma1 = line.indexOf(',', 5);
-        int comma2 = line.indexOf(',', comma1 + 1);
-
-        if (comma1 > 0 && comma2 > 0) {
-
-          int keyIdx =
-            line.substring(5, comma1).toInt();
-
-          int duration =
-            line.substring(comma1 + 1, comma2).toInt();
-
-          // IMPORTANT: only 0-9 are valid
-          if (
-            receivingNoteCount < MAX_NOTES_PER_SONG &&
-            keyIdx >= 0 &&
-            keyIdx < NUM_NOTES &&
-            duration > 0
-          ) {
-
-            customSongNotes[receivingSongIdx][receivingNoteCount].keyIndex =
-              keyIdx;
-
-            customSongNotes[receivingSongIdx][receivingNoteCount].duration =
-              (unsigned long)duration;
-
-            receivingNoteCount++;
-          }
-        }
+        serialLinePos = 0;
       }
 
       continue;
     }
 
     // --------------------------------------------------------
-    // KEY DOWN
+    // Store character
     // --------------------------------------------------------
 
-    if (line.startsWith("KEY:DOWN:")) {
+    if (serialLinePos < SERIAL_LINE_SIZE - 1) {
 
-      int keyIdx = line.substring(9).toInt();
+      serialLine[serialLinePos++] = c;
 
-      if (keyIdx >= 0 && keyIdx < NUM_NOTES) {
+    } else {
 
-        if (
-          !isPaused &&
-          !isPlaying &&
-          waitingForKey
-        ) {
-
-          if (keyIdx == expectedKey) {
-
-            handleCorrectKeyPress(keyIdx);
-
-          } else {
-
-            handleWrongKeyPress(keyIdx);
-          }
-        }
-      }
-
-      continue;
-    }
-
-    // --------------------------------------------------------
-    // KEY UP
-    // --------------------------------------------------------
-
-    if (line.startsWith("KEY:UP:")) {
-
-      int keyIdx = line.substring(7).toInt();
-
-      if (
-        keyIdx >= 0 &&
-        keyIdx < NUM_NOTES &&
-        keyHeld &&
-        keyIdx == expectedKey
-      ) {
-
-        keyHeld = false;
-      }
-
-      continue;
-    }
-
-    // --------------------------------------------------------
-    // RESET
-    // --------------------------------------------------------
-
-    if (line == "CMD:RESET") {
-
-      resetLearning();
-
-      continue;
-    }
-
-    // --------------------------------------------------------
-    // NEW SONG
-    //
-    // Format:
-    // SONG:NEW:0:SongName
-    // --------------------------------------------------------
-
-    if (line.startsWith("SONG:NEW:")) {
-
-      int secondColon = line.indexOf(':', 9);
-
-      if (secondColon > 0) {
-
-        int idx =
-          line.substring(9, secondColon).toInt();
-
-        if (
-          idx >= 0 &&
-          idx < MAX_CUSTOM_SONGS
-        ) {
-
-          receivingSong = true;
-          receivingSongIdx = idx;
-          receivingNoteCount = 0;
-
-          String name =
-            line.substring(secondColon + 1);
-
-          name.trim();
-
-          if (name.length() == 0) {
-            name = "Custom";
-          }
-
-          name.toCharArray(
-            customSongNames[idx],
-            sizeof(customSongNames[idx])
-          );
-
-          Serial.println("SONG:READY");
-
-          lcd.clear();
-          lcd.print("Receiving Song");
-          lcd.setCursor(0, 1);
-          lcd.print(customSongNames[idx]);
-        }
-      }
-
-      continue;
-    }
-
-    // --------------------------------------------------------
-    // SONG LIST
-    // --------------------------------------------------------
-
-    if (line == "SONG:LIST") {
-
-      Serial.println("SONG:LIST:START");
-
-      for (
-        int i = 0;
-        i < NUM_BUILTIN_SONGS;
-        i++
-      ) {
-
-        Serial.print("SONG:BUILTIN:");
-        Serial.print(i);
-        Serial.print(":");
-        Serial.println(songs[i].name);
-      }
-
-      for (
-        int i = 0;
-        i < MAX_CUSTOM_SONGS;
-        i++
-      ) {
-
-        if (customSongLengths[i] > 0) {
-
-          Serial.print("SONG:CUSTOM:");
-          Serial.print(i);
-          Serial.print(":");
-          Serial.println(customSongNames[i]);
-        }
-      }
-
-      Serial.println("SONG:LIST:END");
-
-      continue;
-    }
-
-    // --------------------------------------------------------
-    // LOAD SONG
-    //
-    // SONG:LOAD:BUILTIN:0
-    // SONG:LOAD:CUSTOM:0
-    // --------------------------------------------------------
-
-    if (line.startsWith("SONG:LOAD:")) {
-
-      int typeEnd = line.indexOf(':', 10);
-
-      if (typeEnd > 0) {
-
-        String type =
-          line.substring(10, typeEnd);
-
-        int idx =
-          line.substring(typeEnd + 1).toInt();
-
-        if (
-          type == "BUILTIN" &&
-          idx >= 0 &&
-          idx < NUM_BUILTIN_SONGS
-        ) {
-
-          loadSong(idx);
-
-          currentMenu = MENU_LEARN;
-
-          showLearningScreen();
-        }
-
-        else if (
-          type == "CUSTOM" &&
-          idx >= 0 &&
-          idx < MAX_CUSTOM_SONGS &&
-          customSongLengths[idx] > 0
-        ) {
-
-          loadCustomSong(idx);
-
-          currentMenu = MENU_LEARN;
-
-          showLearningScreen();
-        }
-      }
-
-      continue;
-    }
-
-    // --------------------------------------------------------
-    // PLAY ACK / DONE
-    // --------------------------------------------------------
-
-    if (line == "PLAY:ACK") {
-
-      Serial.println("PLAY:ACK:RECEIVED");
-
-      continue;
-    }
-
-    if (line == "PLAY:DONE") {
-
-      isPlaying = false;
-      playbackPaused = false;
-
-      currentMenu = MENU_LEARN;
-
-      showLearningScreen();
-
-      continue;
+      // Overflow protection.
+      serialLinePos = 0;
     }
   }
 }
+
+
+// ============================================================
+// PROCESS ONE SERIAL LINE
+// ============================================================
+
+void processSerialLine(char* line) {
+
+  // ----------------------------------------------------------
+  // Trim leading spaces
+  // ----------------------------------------------------------
+
+  while (
+    *line == ' ' ||
+    *line == '\t'
+  ) {
+    line++;
+  }
+
+  // ----------------------------------------------------------
+  // Trim trailing spaces
+  // ----------------------------------------------------------
+
+  int len = strlen(line);
+
+  while (
+    len > 0 &&
+    (
+      line[len - 1] == ' ' ||
+      line[len - 1] == '\t'
+    )
+  ) {
+
+    line[len - 1] = '\0';
+    len--;
+  }
+
+  if (len == 0) {
+    return;
+  }
+
+
+  // ==========================================================
+  // CUSTOM SONG RECEIVING
+  // ==========================================================
+
+  if (receivingSong) {
+
+    // --------------------------------------------------------
+    // SONG END
+    // --------------------------------------------------------
+
+    if (strcmp(line, "SONG:END") == 0) {
+
+      customSongLengths[receivingSongIdx] =
+        receivingNoteCount;
+
+      receivingSong = false;
+
+      Serial.print(F("SONG:SAVED:"));
+      Serial.println(receivingSongIdx);
+
+      lcd.clear();
+
+      lcd.print(F("Song Saved!"));
+
+      delay(1000);
+
+      showSongSelect();
+
+      return;
+    }
+
+
+    // --------------------------------------------------------
+    // NOTE:key,duration
+    // --------------------------------------------------------
+
+    if (strncmp(line, "NOTE:", 5) == 0) {
+
+      char* comma1 = strchr(line + 5, ',');
+
+      if (comma1 != NULL) {
+
+        *comma1 = '\0';
+
+        int keyIdx =
+          atoi(line + 5);
+
+        int duration =
+          atoi(comma1 + 1);
+
+        if (
+          receivingNoteCount < MAX_NOTES_PER_SONG &&
+          keyIdx >= 0 &&
+          keyIdx < NUM_NOTES &&
+          duration > 0
+        ) {
+
+          customSongNotes[
+            receivingSongIdx
+          ][receivingNoteCount].keyIndex =
+            (byte)keyIdx;
+
+          customSongNotes[
+            receivingSongIdx
+          ][receivingNoteCount].duration =
+            (unsigned int)duration;
+
+          receivingNoteCount++;
+        }
+      }
+
+      return;
+    }
+
+    return;
+  }
+
+
+  // ==========================================================
+  // KEY DOWN
+  // ==========================================================
+
+  if (strncmp(line, "KEY:DOWN:", 9) == 0) {
+
+    int keyIdx =
+      atoi(line + 9);
+
+    if (
+      keyIdx >= 0 &&
+      keyIdx < NUM_NOTES
+    ) {
+
+      // ------------------------------------------------------
+      // Only accept learning key presses while waiting for
+      // a key. This prevents playback/menu activity from
+      // interfering with learning.
+      // ------------------------------------------------------
+
+      if (
+        !isPaused &&
+        !isPlaying &&
+        waitingForKey
+      ) {
+
+        if (
+          keyIdx ==
+          expectedKey
+        ) {
+
+          handleCorrectKeyPress(
+            (byte)keyIdx
+          );
+
+        } else {
+
+          handleWrongKeyPress(
+            (byte)keyIdx
+          );
+        }
+      }
+    }
+
+    return;
+  }
+
+
+  // ==========================================================
+  // KEY UP
+  // ==========================================================
+
+  if (strncmp(line, "KEY:UP:", 7) == 0) {
+
+    int keyIdx =
+      atoi(line + 7);
+
+    if (
+      keyIdx >= 0 &&
+      keyIdx < NUM_NOTES &&
+      keyHeld &&
+      keyIdx == expectedKey
+    ) {
+
+      keyHeld = false;
+    }
+
+    return;
+  }
+
+
+  // ==========================================================
+  // RESET
+  // ==========================================================
+
+  if (strcmp(line, "CMD:RESET") == 0) {
+
+    resetLearning();
+
+    return;
+  }
+
+
+  // ==========================================================
+  // NEW SONG
+  //
+  // SONG:NEW:0:SongName
+  // ==========================================================
+
+  if (strncmp(line, "SONG:NEW:", 9) == 0) {
+
+    char* secondColon =
+      strchr(line + 9, ':');
+
+    if (secondColon != NULL) {
+
+      *secondColon = '\0';
+
+      int idx =
+        atoi(line + 9);
+
+      if (
+        idx >= 0 &&
+        idx < MAX_CUSTOM_SONGS
+      ) {
+
+        receivingSong = true;
+
+        receivingSongIdx =
+          (byte)idx;
+
+        receivingNoteCount = 0;
+
+        char* nameStart =
+          secondColon + 1;
+
+        while (
+          *nameStart == ' ' ||
+          *nameStart == '\t'
+        ) {
+          nameStart++;
+        }
+
+        if (strlen(nameStart) == 0) {
+
+          strcpy(
+            customSongNames[idx],
+            "Custom"
+          );
+
+        } else {
+
+          strncpy(
+            customSongNames[idx],
+            nameStart,
+            15
+          );
+
+          customSongNames[idx][15] =
+            '\0';
+        }
+
+        Serial.println(F("SONG:READY"));
+
+        lcd.clear();
+
+        lcd.print(F("Receiving Song"));
+
+        lcd.setCursor(0, 1);
+
+        lcd.print(
+          customSongNames[idx]
+        );
+      }
+    }
+
+    return;
+  }
+
+
+  // ==========================================================
+  // SONG LIST
+  // ==========================================================
+
+  if (strcmp(line, "SONG:LIST") == 0) {
+
+    Serial.println(F("SONG:LIST:START"));
+
+    for (
+      byte i = 0;
+      i < NUM_BUILTIN_SONGS;
+      i++
+    ) {
+
+      Serial.print(F("SONG:BUILTIN:"));
+      Serial.print(i);
+      Serial.print(':');
+
+      printProgmemString(
+        songs[i].name
+      );
+
+      Serial.println();
+    }
+
+    for (
+      byte i = 0;
+      i < MAX_CUSTOM_SONGS;
+      i++
+    ) {
+
+      if (
+        customSongLengths[i] > 0
+      ) {
+
+        Serial.print(F("SONG:CUSTOM:"));
+        Serial.print(i);
+        Serial.print(':');
+
+        Serial.println(
+          customSongNames[i]
+        );
+      }
+    }
+
+    Serial.println(F("SONG:LIST:END"));
+
+    return;
+  }
+
+
+  // ==========================================================
+  // LOAD SONG
+  //
+  // SONG:LOAD:BUILTIN:0
+  // SONG:LOAD:CUSTOM:0
+  // ==========================================================
+
+  if (
+    strncmp(line, "SONG:LOAD:", 10) == 0
+  ) {
+
+    char* colon1 =
+      strchr(line + 10, ':');
+
+    if (colon1 != NULL) {
+
+      *colon1 = '\0';
+
+      char* type =
+        line + 10;
+
+      int idx =
+        atoi(colon1 + 1);
+
+      if (
+        strcmp(type, "BUILTIN") == 0 &&
+        idx >= 0 &&
+        idx < NUM_BUILTIN_SONGS
+      ) {
+
+        loadSong((byte)idx);
+
+        currentMenu =
+          MENU_LEARN;
+
+        showLearningScreen();
+      }
+
+      else if (
+        strcmp(type, "CUSTOM") == 0 &&
+        idx >= 0 &&
+        idx < MAX_CUSTOM_SONGS &&
+        customSongLengths[idx] > 0
+      ) {
+
+        loadCustomSong((byte)idx);
+
+        currentMenu =
+          MENU_LEARN;
+
+        showLearningScreen();
+      }
+    }
+
+    return;
+  }
+
+
+  // ==========================================================
+  // PLAY ACK
+  // ==========================================================
+
+  if (strcmp(line, "PLAY:ACK") == 0) {
+
+    Serial.println(F("PLAY:ACK:RECEIVED"));
+
+    return;
+  }
+
+
+  // ==========================================================
+  // PLAY DONE
+  // ==========================================================
+
+  if (strcmp(line, "PLAY:DONE") == 0) {
+
+    isPlaying = false;
+
+    playbackPaused = false;
+
+    currentMenu =
+      MENU_LEARN;
+
+    showLearningScreen();
+
+    return;
+  }
+}
+
+
+// ============================================================
+// PRINT PROGMEM STRING
+// ============================================================
+
+void printProgmemString(
+  const char* ptr
+) {
+
+  char c;
+
+  while (
+    (c = pgm_read_byte(ptr++)) != '\0'
+  ) {
+
+    Serial.write(c);
+  }
+}
+
 
 // ============================================================
 // MATRIX KEYPAD
@@ -707,21 +1038,33 @@ void handleSerialInput() {
 
 void handleMatrixKeypad() {
 
-  char key = matrixKeypad.getKey();
+  char key =
+    matrixKeypad.getKey();
 
   if (!key) {
     return;
   }
 
-  beep(50);
+  beep(30);
+
 
   // ==========================================================
   // SONG SELECT
   // ==========================================================
 
-  if (currentMenu == MENU_SELECT_SONG) {
+  if (
+    currentMenu ==
+    MENU_SELECT_SONG
+  ) {
 
-    if (key >= '1' && key <= '9') {
+    // --------------------------------------------------------
+    // 1-9
+    // --------------------------------------------------------
+
+    if (
+      key >= '1' &&
+      key <= '9'
+    ) {
 
       if (enteringSongNumber) {
 
@@ -738,6 +1081,7 @@ void handleMatrixKeypad() {
             songNumberBuffer - 1;
 
           enteringSongNumber = false;
+
           songNumberBuffer = 0;
 
           showConfirmPlay();
@@ -745,12 +1089,15 @@ void handleMatrixKeypad() {
 
       } else {
 
-        int songNum =
+        byte songNum =
           key - '1';
 
-        if (songNum < TOTAL_SONGS) {
+        if (
+          songNum < TOTAL_SONGS
+        ) {
 
-          selectedSong = songNum;
+          selectedSong =
+            songNum;
 
           showConfirmPlay();
         }
@@ -759,8 +1106,9 @@ void handleMatrixKeypad() {
       return;
     }
 
+
     // --------------------------------------------------------
-    // 0 = AUTO PLAY
+    // 0
     // --------------------------------------------------------
 
     if (key == '0') {
@@ -779,6 +1127,7 @@ void handleMatrixKeypad() {
             songNumberBuffer - 1;
 
           enteringSongNumber = false;
+
           songNumberBuffer = 0;
 
           showConfirmPlay();
@@ -786,11 +1135,13 @@ void handleMatrixKeypad() {
 
       } else {
 
-        autoPlayEnabled = !autoPlayEnabled;
+        autoPlayEnabled =
+          !autoPlayEnabled;
 
         autoStartPlayback = false;
 
-        menuEnterTime = millis();
+        menuEnterTime =
+          millis();
 
         showSongSelect();
       }
@@ -798,8 +1149,9 @@ void handleMatrixKeypad() {
       return;
     }
 
+
     // --------------------------------------------------------
-    // * = NEXT SONG / ENTER NUMBER
+    // *
     // --------------------------------------------------------
 
     if (key == '*') {
@@ -807,18 +1159,20 @@ void handleMatrixKeypad() {
       if (!enteringSongNumber) {
 
         enteringSongNumber = true;
+
         songNumberBuffer = 0;
 
         lcd.clear();
 
         lcd.setCursor(0, 0);
-        lcd.print("Enter song #:");
+
+        lcd.print(F("Enter song #:"));
 
         lcd.setCursor(0, 1);
-        lcd.print("1-6 then #");
-      }
 
-      else {
+        lcd.print(F("1-6 then #"));
+
+      } else {
 
         if (
           songNumberBuffer > 0 &&
@@ -829,6 +1183,7 @@ void handleMatrixKeypad() {
             songNumberBuffer - 1;
 
           enteringSongNumber = false;
+
           songNumberBuffer = 0;
 
           showConfirmPlay();
@@ -838,8 +1193,9 @@ void handleMatrixKeypad() {
       return;
     }
 
+
     // --------------------------------------------------------
-    // # = CONFIRM
+    // #
     // --------------------------------------------------------
 
     if (key == '#') {
@@ -855,6 +1211,7 @@ void handleMatrixKeypad() {
             songNumberBuffer - 1;
 
           enteringSongNumber = false;
+
           songNumberBuffer = 0;
 
           showConfirmPlay();
@@ -868,7 +1225,11 @@ void handleMatrixKeypad() {
       return;
     }
 
+
+    // --------------------------------------------------------
     // A / B / C / D = confirm
+    // --------------------------------------------------------
+
     if (
       key == 'A' ||
       key == 'B' ||
@@ -882,11 +1243,15 @@ void handleMatrixKeypad() {
     }
   }
 
+
   // ==========================================================
   // CONFIRM PLAY
   // ==========================================================
 
-  if (currentMenu == MENU_CONFIRM_PLAY) {
+  if (
+    currentMenu ==
+    MENU_CONFIRM_PLAY
+  ) {
 
     if (
       key == '#' ||
@@ -901,9 +1266,11 @@ void handleMatrixKeypad() {
       key == 'C'
     ) {
 
-      currentMenu = MENU_SELECT_SONG;
+      currentMenu =
+        MENU_SELECT_SONG;
 
-      menuEnterTime = millis();
+      menuEnterTime =
+        millis();
 
       autoStartPlayback = false;
 
@@ -913,17 +1280,23 @@ void handleMatrixKeypad() {
     return;
   }
 
+
   // ==========================================================
   // PLAYBACK MENU
   // ==========================================================
 
-  if (currentMenu == MENU_PLAYBACK) {
+  if (
+    currentMenu ==
+    MENU_PLAYBACK
+  ) {
 
     if (key == '*') {
 
       playbackSpeed += 0.25;
 
-      if (playbackSpeed > 2.0) {
+      if (
+        playbackSpeed > 2.0
+      ) {
         playbackSpeed = 2.0;
       }
 
@@ -932,11 +1305,14 @@ void handleMatrixKeypad() {
       return;
     }
 
+
     if (key == '#') {
 
       playbackSpeed -= 0.25;
 
-      if (playbackSpeed < 0.25) {
+      if (
+        playbackSpeed < 0.25
+      ) {
         playbackSpeed = 0.25;
       }
 
@@ -944,6 +1320,7 @@ void handleMatrixKeypad() {
 
       return;
     }
+
 
     if (key == 'B') {
 
@@ -953,6 +1330,7 @@ void handleMatrixKeypad() {
     }
   }
 
+
   // ==========================================================
   // GENERAL CONTROLS
   // ==========================================================
@@ -961,22 +1339,23 @@ void handleMatrixKeypad() {
 
     case 'A':
 
-      if (currentMenu == MENU_PAUSED) {
+      if (
+        currentMenu ==
+        MENU_PAUSED
+      ) {
 
         resumeSong();
 
-      } else if (currentMenu == MENU_PLAYBACK) {
-
-        stopPlayback();
-
       } else {
 
-        currentMenu = MENU_LEARN;
+        currentMenu =
+          MENU_LEARN;
 
         showLearningScreen();
       }
 
       break;
+
 
     case 'B':
 
@@ -990,20 +1369,24 @@ void handleMatrixKeypad() {
 
       } else {
 
-        currentMenu = MENU_STATS;
+        currentMenu =
+          MENU_STATS;
 
         showStatsScreen();
       }
 
       break;
 
+
     case 'C':
 
-      currentMenu = MENU_SELECT_SONG;
+      currentMenu =
+        MENU_SELECT_SONG;
 
       selectedSong = 0;
 
-      menuEnterTime = millis();
+      menuEnterTime =
+        millis();
 
       autoStartPlayback = false;
 
@@ -1011,9 +1394,13 @@ void handleMatrixKeypad() {
 
       break;
 
+
     case 'D':
 
-      if (currentMenu == MENU_PLAYBACK) {
+      if (
+        currentMenu ==
+        MENU_PLAYBACK
+      ) {
 
         stopPlayback();
 
@@ -1023,6 +1410,7 @@ void handleMatrixKeypad() {
       }
 
       break;
+
 
     case '0':
 
@@ -1039,6 +1427,7 @@ void handleMatrixKeypad() {
   }
 }
 
+
 // ============================================================
 // LOAD + PLAY
 // ============================================================
@@ -1052,23 +1441,27 @@ void loadAndPlaySong() {
   startPlayback();
 }
 
+
 // ============================================================
 // CONFIRM SONG
 // ============================================================
 
 void confirmSongSelection() {
 
-  if (selectedSong < NUM_BUILTIN_SONGS) {
+  if (
+    selectedSong <
+    NUM_BUILTIN_SONGS
+  ) {
 
     loadSong(selectedSong);
 
   } else {
 
-    int customIdx =
-      selectedSong - NUM_BUILTIN_SONGS;
+    byte customIdx =
+      selectedSong -
+      NUM_BUILTIN_SONGS;
 
     if (
-      customIdx >= 0 &&
       customIdx < MAX_CUSTOM_SONGS &&
       customSongLengths[customIdx] > 0
     ) {
@@ -1078,7 +1471,8 @@ void confirmSongSelection() {
     } else {
 
       lcd.clear();
-      lcd.print("Empty Song");
+
+      lcd.print(F("Empty Song"));
 
       delay(1000);
 
@@ -1088,10 +1482,40 @@ void confirmSongSelection() {
     }
   }
 
-  currentMenu = MENU_LEARN;
+  currentMenu =
+    MENU_LEARN;
 
   showLearningScreen();
 }
+
+
+// ============================================================
+// GET SONG NAME
+// ============================================================
+
+void getSongName(
+  const Song* song,
+  char* buffer,
+  byte bufferSize
+) {
+
+  if (
+    buffer == NULL ||
+    bufferSize == 0
+  ) {
+    return;
+  }
+
+  strncpy_P(
+    buffer,
+    song->name,
+    bufferSize - 1
+  );
+
+  buffer[bufferSize - 1] =
+    '\0';
+}
+
 
 // ============================================================
 // KEY TIMING
@@ -1114,45 +1538,63 @@ void checkKeyPressTiming() {
     SongNote note =
       learningNotes[songPosition];
 
-    if (heldTime >= note.duration) {
+    if (
+      heldTime >=
+      note.duration
+    ) {
 
       advanceToNextNote();
-    }
 
-    updateTimerDisplay();
+    } else {
+
+      updateTimerDisplay();
+    }
   }
 }
+
 
 // ============================================================
 // CORRECT KEY
 // ============================================================
 
-void handleCorrectKeyPress(int keyIdx) {
+void handleCorrectKeyPress(
+  byte keyIdx
+) {
+
+  // Prevent repeated KEY:DOWN messages
+  // from incrementing the score repeatedly.
+  if (keyHeld) {
+    return;
+  }
 
   keyHeld = true;
 
-  keyPressStartTime = millis();
+  keyPressStartTime =
+    millis();
 
   totalPausedTime = 0;
 
-  beep(100);
+  beep(50);
 
   lcd.setCursor(0, 1);
-  lcd.print("Correct!       ");
+
+  lcd.print(F("Correct!        "));
 
   correctPresses++;
 }
+
 
 // ============================================================
 // NOTE NAME
 // ============================================================
 
-const char* getNoteName(int idx) {
+const char* getNoteName(
+  byte idx
+) {
 
   static char buf[6];
 
   if (
-    idx < 0 ||
     idx >= NUM_NOTES
   ) {
 
@@ -1163,32 +1605,45 @@ const char* getNoteName(int idx) {
 
   strcpy_P(
     buf,
-    (char*)pgm_read_ptr(&noteNames[idx])
+    (PGM_P)pgm_read_ptr(
+      &noteNames[idx]
+    )
   );
 
   return buf;
 }
 
+
 // ============================================================
 // WRONG KEY
 // ============================================================
 
-void handleWrongKeyPress(int keyIdx) {
+void handleWrongKeyPress(
+  byte keyIdx
+) {
 
-  beep(200);
+  beep(80);
 
   lcd.setCursor(0, 1);
 
-  lcd.print("Wrong: ");
-  lcd.print(getNoteName(keyIdx));
-  lcd.print("       ");
+  lcd.print(F("Wrong: "));
+
+  lcd.print(
+    getNoteName(keyIdx)
+  );
+
+  lcd.print(F("       "));
 
   wrongPresses++;
 
-  delay(500);
+  // Short delay only.
+  // Serial reception is still buffered by hardware,
+  // and the next loop will process it.
+  delay(100);
 
   showLearningScreen();
 }
+
 
 // ============================================================
 // NEXT NOTE
@@ -1199,26 +1654,31 @@ void advanceToNextNote() {
   songPosition++;
 
   if (
-    songPosition >= learningLength
+    songPosition >=
+    learningLength
   ) {
 
     songPosition = 0;
 
     waitingForKey = false;
+
     keyHeld = false;
 
     lcd.setCursor(0, 1);
-    lcd.print("Song Complete!");
 
-    delay(2000);
+    lcd.print(F("Song Complete!"));
 
-    currentMenu = MENU_STATS;
+    delay(1000);
+
+    currentMenu =
+      MENU_STATS;
 
     showStatsScreen();
 
-    delay(3000);
+    delay(1500);
 
-    currentMenu = MENU_LEARN;
+    currentMenu =
+      MENU_LEARN;
 
     showLearningScreen();
 
@@ -1228,7 +1688,9 @@ void advanceToNextNote() {
   waitingForKey = true;
 
   expectedKey =
-    learningNotes[songPosition].keyIndex;
+    learningNotes[
+      songPosition
+    ].keyIndex;
 
   keyHeld = false;
 
@@ -1239,53 +1701,168 @@ void advanceToNextNote() {
   showLearningScreen();
 }
 
+
 // ============================================================
 // MERGE CONSECUTIVE NOTES
 // ============================================================
 
-void mergeNotes(SongNote* source, int sourceLen, SongNote* dest, int& destLen) {
+void mergeNotes(
+  const SongNote* source,
+  byte sourceLen,
+  SongNote* dest,
+  byte& destLen
+) {
+
   destLen = 0;
-  if (sourceLen <= 0) return;
-  int currentKey = source[0].keyIndex;
-  unsigned long currentDur = source[0].duration;
-  for (int i = 1; i < sourceLen; i++) {
-    if (source[i].keyIndex == currentKey) {
-      currentDur += source[i].duration;
+
+  if (
+    sourceLen == 0
+  ) {
+    return;
+  }
+
+  SongNote current =
+    readSongNote(
+      source,
+      0
+    );
+
+  for (
+    byte i = 1;
+    i < sourceLen;
+    i++
+  ) {
+
+    SongNote next =
+      readSongNote(
+        source,
+        i
+      );
+
+    if (
+      next.keyIndex ==
+      current.keyIndex
+    ) {
+
+      unsigned long newDuration =
+        (unsigned long)current.duration +
+        next.duration;
+
+      if (
+        newDuration > 65535UL
+      ) {
+        newDuration = 65535UL;
+      }
+
+      current.duration =
+        (unsigned int)newDuration;
+
     } else {
-      dest[destLen].keyIndex = currentKey;
-      dest[destLen].duration = currentDur;
-      destLen++;
-      currentKey = source[i].keyIndex;
-      currentDur = source[i].duration;
+
+      if (
+        destLen <
+        MAX_NOTES_PER_SONG
+      ) {
+
+        dest[destLen++] =
+          current;
+      }
+
+      current =
+        next;
     }
   }
-  dest[destLen].keyIndex = currentKey;
-  dest[destLen].duration = currentDur;
-  destLen++;
+
+  if (
+    destLen <
+    MAX_NOTES_PER_SONG
+  ) {
+
+    dest[destLen++] =
+      current;
+  }
 }
+
+
+// ============================================================
+// READ SONG NOTE
+// Handles PROGMEM and normal RAM notes.
+// ============================================================
+
+SongNote readSongNote(
+  const SongNote* source,
+  byte index
+) {
+
+  SongNote result;
+
+  // Built-in songs are stored in PROGMEM.
+  // Custom songs are stored in SRAM.
+
+  if (
+    source == song1_notes ||
+    source == song2_notes ||
+    source == song3_notes ||
+    source == song4_notes ||
+    source == song5_notes
+  ) {
+
+    memcpy_P(
+      &result,
+      &source[index],
+      sizeof(SongNote)
+    );
+
+  } else {
+
+    result =
+      source[index];
+  }
+
+  return result;
+}
+
 
 // ============================================================
 // LOAD BUILT-IN SONG
 // ============================================================
 
-void loadSong(int songIdx) {
+void loadSong(
+  byte songIdx
+) {
 
   if (
-    songIdx < 0 ||
-    songIdx >= NUM_BUILTIN_SONGS
+    songIdx >=
+    NUM_BUILTIN_SONGS
   ) {
 
     return;
   }
 
-  currentSong = &songs[songIdx];
+  currentSong =
+    &songs[songIdx];
 
   songPosition = 0;
 
   correctPresses = 0;
+
   wrongPresses = 0;
 
-  mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
+  mergeNotes(
+    currentSong->notes,
+    currentSong->length,
+    learningNotes,
+    learningLength
+  );
+
+  if (
+    learningLength == 0
+  ) {
+
+    waitingForKey = false;
+
+    return;
+  }
 
   waitingForKey = true;
 
@@ -1301,11 +1878,14 @@ void loadSong(int songIdx) {
   scrollOffset = 0;
 }
 
+
 // ============================================================
 // LOAD CUSTOM SONG
 // ============================================================
 
-void loadCustomSong(int idx) {
+void loadCustomSong(
+  byte idx
+) {
 
   static Song customSong;
 
@@ -1324,9 +1904,24 @@ void loadCustomSong(int idx) {
   songPosition = 0;
 
   correctPresses = 0;
+
   wrongPresses = 0;
 
-  mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
+  mergeNotes(
+    currentSong->notes,
+    currentSong->length,
+    learningNotes,
+    learningLength
+  );
+
+  if (
+    learningLength == 0
+  ) {
+
+    waitingForKey = false;
+
+    return;
+  }
 
   waitingForKey = true;
 
@@ -1342,6 +1937,7 @@ void loadCustomSong(int idx) {
   scrollOffset = 0;
 }
 
+
 // ============================================================
 // RESET LEARNING
 // ============================================================
@@ -1351,9 +1947,24 @@ void resetLearning() {
   songPosition = 0;
 
   correctPresses = 0;
+
   wrongPresses = 0;
 
-  mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
+  mergeNotes(
+    currentSong->notes,
+    currentSong->length,
+    learningNotes,
+    learningLength
+  );
+
+  if (
+    learningLength == 0
+  ) {
+
+    waitingForKey = false;
+
+    return;
+  }
 
   waitingForKey = true;
 
@@ -1370,6 +1981,7 @@ void resetLearning() {
 
   showLearningScreen();
 }
+
 
 // ============================================================
 // PAUSE LEARNING
@@ -1383,18 +1995,23 @@ void pauseSong() {
 
   isPaused = true;
 
-  pauseStartTime = millis();
+  pauseStartTime =
+    millis();
 
-  currentMenu = MENU_PAUSED;
+  currentMenu =
+    MENU_PAUSED;
 
   lcd.clear();
 
   lcd.setCursor(0, 0);
-  lcd.print("PAUSED");
+
+  lcd.print(F("PAUSED"));
 
   lcd.setCursor(0, 1);
-  lcd.print("A:Resume B:Menu");
+
+  lcd.print(F("A:Resume B:Menu"));
 }
+
 
 // ============================================================
 // RESUME LEARNING
@@ -1407,14 +2024,17 @@ void resumeSong() {
   }
 
   totalPausedTime +=
-    millis() - pauseStartTime;
+    millis() -
+    pauseStartTime;
 
   isPaused = false;
 
-  currentMenu = MENU_LEARN;
+  currentMenu =
+    MENU_LEARN;
 
   showLearningScreen();
 }
+
 
 // ============================================================
 // LEARNING SCREEN
@@ -1424,34 +2044,59 @@ void showLearningScreen() {
 
   lcd.clear();
 
+  if (
+    learningLength == 0
+  ) {
+
+    lcd.print(F("No notes"));
+
+    return;
+  }
+
   lcd.setCursor(0, 0);
 
-  lcd.print("Press: ");
+  lcd.print(F("Press: "));
 
   lcd.print(
     getNoteName(expectedKey)
   );
 
-  lcd.print("     ");
+  lcd.print(F("     "));
 
   lcd.setCursor(0, 1);
 
-  lcd.print(currentSong->name);
+  char nameBuffer[17];
 
-  lcd.print(" ");
+  getSongName(
+    currentSong,
+    nameBuffer,
+    sizeof(nameBuffer)
+  );
+
+  lcd.print(nameBuffer);
+
+  lcd.print(' ');
 
   lcd.print(songPosition + 1);
 
-  lcd.print("/");
+  lcd.print('/');
 
   lcd.print(learningLength);
-
-  lcd.print("    ");
 }
+
+
+// ============================================================
+// TIMER DISPLAY
+// ============================================================
 
 void updateTimerDisplay() {
 
-  if (keyHeld && !isPaused && !isPlaying && waitingForKey) {
+  if (
+    keyHeld &&
+    !isPaused &&
+    !isPlaying &&
+    waitingForKey
+  ) {
 
     unsigned long heldTime =
       millis() -
@@ -1461,34 +2106,33 @@ void updateTimerDisplay() {
     SongNote note =
       learningNotes[songPosition];
 
-    long remaining = (long)note.duration - (long)heldTime;
+    long remaining =
+      (long)note.duration -
+      (long)heldTime;
 
-    if (remaining < 0) remaining = 0;
+    if (
+      remaining < 0
+    ) {
+      remaining = 0;
+    }
 
     lcd.setCursor(11, 1);
 
-    if (remaining > 0) {
-
-      if (remaining < 1000) {
-
-        lcd.print("  ");
-
-      } else if (remaining < 10000) {
-
-        lcd.print(" ");
-
-      }
+    if (
+      remaining > 0
+    ) {
 
       lcd.print(remaining);
-      lcd.print("ms");
+
+      lcd.print(F("ms "));
 
     } else {
 
-      lcd.print("   DONE!");
-
+      lcd.print(F("DONE!"));
     }
   }
 }
+
 
 // ============================================================
 // SCROLL
@@ -1502,13 +2146,16 @@ void handleScrollDisplay() {
     !isPlaying
   ) {
 
-    unsigned long now = millis();
+    unsigned long now =
+      millis();
 
     if (
-      now - lastScrollTime > 1500
+      now - lastScrollTime >
+      1500
     ) {
 
-      lastScrollTime = now;
+      lastScrollTime =
+        now;
 
       scrollOffset =
         (scrollOffset + 1) % 2;
@@ -1518,35 +2165,52 @@ void handleScrollDisplay() {
   }
 }
 
+
 // ============================================================
 // UPDATE BOTTOM LINE
 // ============================================================
 
 void updateBottomLine() {
 
+  if (
+    learningLength == 0
+  ) {
+    return;
+  }
+
   lcd.setCursor(0, 1);
-  lcd.print("                ");
+
+  lcd.print(F("                "));
+
   lcd.setCursor(0, 1);
 
-  if (scrollOffset == 0) {
+  if (
+    scrollOffset == 0
+  ) {
 
-    lcd.print(currentSong->name);
+    char nameBuffer[17];
 
-    lcd.print(" ");
+    getSongName(
+      currentSong,
+      nameBuffer,
+      sizeof(nameBuffer)
+    );
+
+    lcd.print(nameBuffer);
+
+    lcd.print(' ');
 
     lcd.print(songPosition + 1);
 
-    lcd.print("/");
+    lcd.print('/');
 
     lcd.print(learningLength);
 
-    lcd.print("     ");
-
   } else {
 
-    lcd.print("Next: ");
+    lcd.print(F("Next: "));
 
-    int nextIdx =
+    byte nextIdx =
       (songPosition + 1) %
       learningLength;
 
@@ -1561,7 +2225,7 @@ void updateBottomLine() {
       learningLength
     ) {
 
-      lcd.print(" ");
+      lcd.print(' ');
 
       lcd.print(
         getNoteName(
@@ -1569,10 +2233,9 @@ void updateBottomLine() {
         )
       );
     }
-
-    lcd.print("     ");
   }
 }
+
 
 // ============================================================
 // STATS
@@ -1584,34 +2247,41 @@ void showStatsScreen() {
 
   lcd.setCursor(0, 0);
 
-  lcd.print("Correct: ");
-  lcd.print(correctPresses);
+  lcd.print(F("Correct: "));
 
-  lcd.print("      ");
+  lcd.print(correctPresses);
 
   lcd.setCursor(0, 1);
 
-  lcd.print("Wrong: ");
+  lcd.print(F("Wrong: "));
+
   lcd.print(wrongPresses);
 
-  lcd.print(" Acc:");
+  lcd.print(F(" Acc:"));
 
-  int total =
+  unsigned int total =
     correctPresses +
     wrongPresses;
 
-  int accuracy = 0;
+  unsigned int accuracy = 0;
 
-  if (total > 0) {
+  if (
+    total > 0
+  ) {
 
     accuracy =
-      (correctPresses * 100) /
+      (
+        (unsigned long)correctPresses *
+        100UL
+      ) /
       total;
   }
 
   lcd.print(accuracy);
-  lcd.print("%");
+
+  lcd.print('%');
 }
+
 
 // ============================================================
 // SONG SELECT
@@ -1624,35 +2294,44 @@ void showSongSelect() {
   lcd.setCursor(0, 0);
 
   if (autoPlayEnabled) {
-    lcd.print("AUTO:ON ");
+
+    lcd.print(F("AUTO:ON "));
+
   } else {
-    lcd.print("AUTO:OFF");
+
+    lcd.print(F("AUTO:OFF"));
   }
 
-  lcd.print(" ");
+  lcd.print(' ');
 
   lcd.print(selectedSong + 1);
 
-  lcd.print("/");
+  lcd.print('/');
 
   lcd.print(TOTAL_SONGS);
 
   lcd.setCursor(0, 1);
 
-  lcd.print("> ");
+  lcd.print(F("> "));
 
   if (
     selectedSong <
     NUM_BUILTIN_SONGS
   ) {
 
-    lcd.print(
-      songs[selectedSong].name
+    char nameBuffer[17];
+
+    getSongName(
+      &songs[selectedSong],
+      nameBuffer,
+      sizeof(nameBuffer)
     );
+
+    lcd.print(nameBuffer);
 
   } else {
 
-    int customIdx =
+    byte customIdx =
       selectedSong -
       NUM_BUILTIN_SONGS;
 
@@ -1666,10 +2345,11 @@ void showSongSelect() {
 
     } else {
 
-      lcd.print("(empty)");
+      lcd.print(F("(empty)"));
     }
   }
 }
+
 
 // ============================================================
 // CONFIRM SCREEN
@@ -1684,7 +2364,7 @@ void showConfirmPlay() {
 
   lcd.setCursor(0, 0);
 
-  lcd.print("Play this song?");
+  lcd.print(F("Play this song?"));
 
   lcd.setCursor(0, 1);
 
@@ -1693,13 +2373,19 @@ void showConfirmPlay() {
     NUM_BUILTIN_SONGS
   ) {
 
-    lcd.print(
-      songs[selectedSong].name
+    char nameBuffer[17];
+
+    getSongName(
+      &songs[selectedSong],
+      nameBuffer,
+      sizeof(nameBuffer)
     );
+
+    lcd.print(nameBuffer);
 
   } else {
 
-    int customIdx =
+    byte customIdx =
       selectedSong -
       NUM_BUILTIN_SONGS;
 
@@ -1713,16 +2399,19 @@ void showConfirmPlay() {
 
     } else {
 
-      lcd.print("(empty)");
+      lcd.print(F("(empty)"));
     }
   }
 }
+
 
 // ============================================================
 // BEEP
 // ============================================================
 
-void beep(int duration) {
+void beep(
+  unsigned int duration
+) {
 
   digitalWrite(
     buzzerPin,
@@ -1737,6 +2426,7 @@ void beep(int duration) {
   );
 }
 
+
 // ============================================================
 // START PLAYBACK
 // ============================================================
@@ -1745,7 +2435,7 @@ void startPlayback() {
 
   if (
     currentSong == NULL ||
-    currentSong->length <= 0
+    currentSong->length == 0
   ) {
 
     return;
@@ -1769,39 +2459,46 @@ void startPlayback() {
   // Send song to music player
   // ----------------------------------------------------------
 
-  Serial.print("PLAY:START:");
+  Serial.print(F("PLAY:START:"));
 
   Serial.print(
     currentSong->length
   );
 
-  Serial.print(",");
+  Serial.print(',');
 
   for (
-    int i = 0;
+    byte i = 0;
     i < currentSong->length;
     i++
   ) {
 
+    SongNote note =
+      readSongNote(
+        currentSong->notes,
+        i
+      );
+
     Serial.print(
-      currentSong->notes[i].keyIndex
+      note.keyIndex
     );
 
-    Serial.print(":");
+    Serial.print(':');
 
     Serial.print(
-      currentSong->notes[i].duration
+      note.duration
     );
 
     if (
-      i < currentSong->length - 1
+      i <
+      currentSong->length - 1
     ) {
 
-      Serial.print(",");
+      Serial.print(',');
     }
   }
 
-  Serial.print(",");
+  Serial.print(',');
 
   Serial.println(
     playbackSpeed,
@@ -1810,13 +2507,16 @@ void startPlayback() {
 
   Serial.flush();
 
+  // ----------------------------------------------------------
   // Local confirmation beep
+  // ----------------------------------------------------------
+
   digitalWrite(
     buzzerPin,
     HIGH
   );
 
-  delay(50);
+  delay(30);
 
   digitalWrite(
     buzzerPin,
@@ -1825,6 +2525,7 @@ void startPlayback() {
 
   showPlaybackScreen();
 }
+
 
 // ============================================================
 // STOP PLAYBACK
@@ -1836,7 +2537,8 @@ void stopPlayback() {
     return;
   }
 
-  Serial.println("PLAY:STOP");
+  Serial.println(F("PLAY:STOP"));
+
   Serial.flush();
 
   isPlaying = false;
@@ -1849,6 +2551,7 @@ void stopPlayback() {
   showLearningScreen();
 }
 
+
 // ============================================================
 // PAUSE / RESUME PLAYBACK
 // ============================================================
@@ -1859,7 +2562,9 @@ void togglePlaybackPause() {
     return;
   }
 
-  if (playbackPaused) {
+  if (
+    playbackPaused
+  ) {
 
     totalPausedPlaybackTime +=
       millis() -
@@ -1867,7 +2572,8 @@ void togglePlaybackPause() {
 
     playbackPaused = false;
 
-    Serial.println("PLAY:RESUME");
+    Serial.println(F("PLAY:RESUME"));
+
     Serial.flush();
 
   } else {
@@ -1877,12 +2583,14 @@ void togglePlaybackPause() {
     playbackPausedTime =
       millis();
 
-    Serial.println("PLAY:PAUSE");
+    Serial.println(F("PLAY:PAUSE"));
+
     Serial.flush();
   }
 
   showPlaybackScreen();
 }
+
 
 // ============================================================
 // PLAYBACK UPDATE
@@ -1916,24 +2624,31 @@ void handlePlayback() {
   unsigned long noteStart = 0;
 
   for (
-    int i = 0;
+    byte i = 0;
     i < playbackNoteIndex;
     i++
   ) {
 
+    SongNote note =
+      readSongNote(
+        currentSong->notes,
+        i
+      );
+
     noteStart +=
-      currentSong->notes[i].duration;
+      note.duration /
+      playbackSpeed;
   }
 
-  unsigned long noteDuration =
-    currentSong->notes[
+  SongNote currentNote =
+    readSongNote(
+      currentSong->notes,
       playbackNoteIndex
-    ].duration;
+    );
 
-  // Speed > 1 means faster
   unsigned long adjustedDuration =
-    (unsigned long)(
-      (float)noteDuration /
+    (
+      (float)currentNote.duration /
       playbackSpeed
     );
 
@@ -1959,6 +2674,7 @@ void handlePlayback() {
   }
 }
 
+
 // ============================================================
 // PLAYBACK SCREEN
 // ============================================================
@@ -1969,18 +2685,26 @@ void showPlaybackScreen() {
 
   lcd.setCursor(0, 0);
 
-  if (playbackPaused) {
+  if (
+    playbackPaused
+  ) {
 
-    lcd.print("PAUSED: ");
+    lcd.print(F("PAUSED: "));
 
   } else {
 
-    lcd.print("PLAYING: ");
+    lcd.print(F("PLAYING: "));
   }
 
-  lcd.print(
-    currentSong->name
+  char nameBuffer[17];
+
+  getSongName(
+    currentSong,
+    nameBuffer,
+    sizeof(nameBuffer)
   );
+
+  lcd.print(nameBuffer);
 
   lcd.setCursor(0, 1);
 
@@ -1989,25 +2713,36 @@ void showPlaybackScreen() {
     currentSong->length
   ) {
 
-    lcd.print("Spd:");
-    lcd.print(playbackSpeed, 1);
-    lcd.print("x ");
+    lcd.print(F("Spd:"));
+
+    lcd.print(
+      playbackSpeed,
+      1
+    );
+
+    lcd.print('x');
+
+    lcd.print(' ');
+
+    SongNote note =
+      readSongNote(
+        currentSong->notes,
+        playbackNoteIndex
+      );
 
     lcd.print(
       getNoteName(
-        currentSong->
-          notes[playbackNoteIndex]
-          .keyIndex
+        note.keyIndex
       )
     );
 
-    lcd.print(" ");
+    lcd.print(' ');
 
     lcd.print(
       playbackNoteIndex + 1
     );
 
-    lcd.print("/");
+    lcd.print('/');
 
     lcd.print(
       currentSong->length
@@ -2015,6 +2750,6 @@ void showPlaybackScreen() {
 
   } else {
 
-    lcd.print("Complete!      ");
+    lcd.print(F("Complete!"));
   }
 }
