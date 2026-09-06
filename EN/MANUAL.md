@@ -90,6 +90,10 @@ Keys: [C4][D4][E4][F4][G4][A4][B4][C5][D5][E5]
 
 > ⚠️ **Upload with Logic Arduino Pin 0 disconnected**, then reconnect.
 
+### Code Files
+- Music Arduino: `EN/ai_garbo/music_player_2/music_player_2.ino`
+- Logic Arduino: `EN/ai_garbo/logic_part2/logic_part2.ino`
+
 ---
 
 ## Startup
@@ -185,6 +189,23 @@ Press: C4
 Next: D4 E4
 ```
 
+### Long Key Press & Timer
+
+When a song contains consecutive identical notes (e.g., Wolf3D's G4×3 at 300ms each), they are automatically merged into a single long press. The LCD shows a countdown timer during the hold:
+
+```
+Press: G4
+Wolf3D 1/26  900ms
+```
+
+While holding the correct key, the timer counts down. When it reaches 0:
+```
+Press: G4
+Wolf3D 2/26  DONE!
+```
+
+The screen then advances to the next note automatically.
+
 ### Controls
 | Key | Action |
 |-----|--------|
@@ -225,7 +246,7 @@ A:Resume B:Menu
 1. **Mary Lamb** - Mary Had a Little Lamb
 2. **Twinkle** - Twinkle Twinkle Little Star
 3. **Scale Up** - C Major Scale
-4. **Wolf3D** - Wolfenstein 3D Intro
+4. **Wolf3D** - Wolfenstein 3D Intro (*consecutive G4 notes merged into long press*)
 5. **STALKER** - S.T.A.L.K.E.R. Theme
 6. **Custom 1** - User uploaded via USB
 

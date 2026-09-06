@@ -89,7 +89,7 @@ Song songs[] = {
 };
 const int NUM_BUILTIN_SONGS = 5;
 const int MAX_CUSTOM_SONGS = 1;
-const int MAX_NOTES_PER_SONG = 30;
+const int MAX_NOTES_PER_SONG = 22;
 const int TOTAL_SONGS = NUM_BUILTIN_SONGS + MAX_CUSTOM_SONGS;
 
 SongNote customSongNotes[MAX_CUSTOM_SONGS][MAX_NOTES_PER_SONG];
@@ -111,6 +111,9 @@ bool keyHeld = false;
 bool isPaused = false;
 unsigned long pauseStartTime = 0;
 unsigned long totalPausedTime = 0;
+
+SongNote learningNotes[22];
+int learningLength = 0;
 
 bool keyStates[11] = {false};
 
@@ -435,10 +438,11 @@ void confirmSongSelection() {
 void checkKeyPressTiming() {
   if (waitingForKey && keyHeld) {
     unsigned long heldTime = millis() - keyPressStartTime - totalPausedTime;
-    SongNote note = currentSong->notes[songPosition];
+    SongNote note = learningNotes[songPosition];
     if (heldTime >= note.duration) {
       advanceToNextNote();
     }
+    updateTimerDisplay();
   }
 }
 
@@ -472,7 +476,7 @@ void handleWrongKeyPress(int keyIdx) {
 
 void advanceToNextNote() {
   songPosition++;
-  if (songPosition >= currentSong->length) {
+  if (songPosition >= learningLength) {
     songPosition = 0;
     lcd.setCursor(0, 1);
     lcd.print("Song Complete! ");
@@ -482,7 +486,7 @@ void advanceToNextNote() {
     showLearningScreen();
   } else {
     waitingForKey = true;
-    expectedKey = currentSong->notes[songPosition].keyIndex;
+    expectedKey = learningNotes[songPosition].keyIndex;
     keyHeld = false;
     totalPausedTime = 0;
     scrollOffset = 0;
@@ -490,13 +494,43 @@ void advanceToNextNote() {
   }
 }
 
+// ============================================================
+// MERGE CONSECUTIVE NOTES
+// ============================================================
+
+void mergeNotes(SongNote* source, int sourceLen, SongNote* dest, int& destLen) {
+  destLen = 0;
+  if (sourceLen <= 0) return;
+  int currentKey = source[0].keyIndex;
+  unsigned long currentDur = source[0].duration;
+  for (int i = 1; i < sourceLen; i++) {
+    if (source[i].keyIndex == currentKey) {
+      currentDur += source[i].duration;
+    } else {
+      dest[destLen].keyIndex = currentKey;
+      dest[destLen].duration = currentDur;
+      destLen++;
+      currentKey = source[i].keyIndex;
+      currentDur = source[i].duration;
+    }
+  }
+  dest[destLen].keyIndex = currentKey;
+  dest[destLen].duration = currentDur;
+  destLen++;
+}
+
+// ============================================================
+// LOAD BUILT-IN SONG
+// ============================================================
+
 void loadSong(int songIdx) {
   currentSong = &songs[songIdx];
   songPosition = 0;
   correctPresses = 0;
   wrongPresses = 0;
+  mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
   waitingForKey = true;
-  expectedKey = currentSong->notes[0].keyIndex;
+  expectedKey = learningNotes[0].keyIndex;
   keyHeld = false;
   isPaused = false;
   totalPausedTime = 0;
@@ -512,8 +546,9 @@ void loadCustomSong(int idx) {
   songPosition = 0;
   correctPresses = 0;
   wrongPresses = 0;
+  mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
   waitingForKey = true;
-  expectedKey = currentSong->notes[0].keyIndex;
+  expectedKey = learningNotes[0].keyIndex;
   keyHeld = false;
   isPaused = false;
   totalPausedTime = 0;
@@ -524,8 +559,9 @@ void resetLearning() {
   songPosition = 0;
   correctPresses = 0;
   wrongPresses = 0;
+  mergeNotes(currentSong->notes, currentSong->length, learningNotes, learningLength);
   waitingForKey = true;
-  expectedKey = currentSong->notes[0].keyIndex;
+  expectedKey = learningNotes[0].keyIndex;
   keyHeld = false;
   isPaused = false;
   totalPausedTime = 0;
@@ -564,7 +600,29 @@ void showLearningScreen() {
   lcd.print(" ");
   lcd.print(songPosition + 1);
   lcd.print("/");
-  lcd.print(currentSong->length);
+  lcd.print(learningLength);
+  lcd.print("    ");
+}
+
+void updateTimerDisplay() {
+  if (keyHeld && !isPaused && !isPlaying && waitingForKey) {
+    unsigned long heldTime = millis() - keyPressStartTime - totalPausedTime;
+    SongNote note = learningNotes[songPosition];
+    long remaining = (long)note.duration - (long)heldTime;
+    if (remaining < 0) remaining = 0;
+    lcd.setCursor(11, 1);
+    if (remaining > 0) {
+      if (remaining < 1000) {
+        lcd.print("  ");
+      } else if (remaining < 10000) {
+        lcd.print(" ");
+      }
+      lcd.print(remaining);
+      lcd.print("ms");
+    } else {
+      lcd.print("   DONE!");
+    }
+  }
 }
 
 void handleScrollDisplay() {
@@ -580,22 +638,24 @@ void handleScrollDisplay() {
 
 void updateBottomLine() {
   lcd.setCursor(0, 1);
+  lcd.print("                ");
+  lcd.setCursor(0, 1);
   if (scrollOffset == 0) {
     lcd.print(currentSong->name);
     lcd.print(" ");
     lcd.print(songPosition + 1);
     lcd.print("/");
-    lcd.print(currentSong->length);
-    lcd.print("       ");
+    lcd.print(learningLength);
+    lcd.print("     ");
   } else {
     lcd.print("Next: ");
-    int nextIdx = (songPosition + 1) % currentSong->length;
-    lcd.print(getNoteName(currentSong->notes[nextIdx].keyIndex));
-    if (nextIdx + 1 < currentSong->length) {
+    int nextIdx = (songPosition + 1) % learningLength;
+    lcd.print(getNoteName(learningNotes[nextIdx].keyIndex));
+    if (nextIdx + 1 < learningLength) {
       lcd.print(" ");
-      lcd.print(getNoteName(currentSong->notes[nextIdx + 1].keyIndex));
+      lcd.print(getNoteName(learningNotes[nextIdx + 1].keyIndex));
     }
-    lcd.print("        ");
+    lcd.print("     ");
   }
 }
 

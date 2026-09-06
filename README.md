@@ -9,8 +9,8 @@ A dual-Arduino musical learning keyboard project. Two Arduinos communicate via s
 
 1. **Wire the hardware** - See [Wiring Guide](EN/MANUAL.md#wiring)
 2. **Upload code**:
-   - `EN/logic_part/logic_part.ino` → Logic Arduino (disconnect Pin 0 first!)
-   - `EN/music_player_EN/music_player_EN.ino` → Music Arduino
+   - `EN/ai_garbo/logic_part2/logic_part2.ino` → Logic Arduino (disconnect Pin 0 first!)
+   - `EN/ai_garbo/music_player_2/music_player_2.ino` → Music Arduino
 3. **Power both** - Welcome screen → Song Select menu appears
 
 ## Documentation
@@ -24,10 +24,14 @@ A dual-Arduino musical learning keyboard project. Two Arduinos communicate via s
 ## Features
 
 - 10-key piano (C4–E5) with octave shifting (±3 octaves)
-- 6 built-in songs + custom song upload via USB
-- Learning mode with real-time feedback & statistics
+- 5 built-in songs + custom song upload via USB
+- **Learning mode** with long key press support and real-time countdown timer
 - Auto-play mode with adjustable speed
 - LCD menu navigation via 4×4 keypad
+
+### Long Key Press
+
+Consecutive identical notes (e.g., Wolf3D's G4×3) are automatically merged into a single long press. The LCD shows a countdown timer (`900ms`) while holding the key, turning to `DONE!` when the duration is met.
 
 ## Hardware Requirements
 
