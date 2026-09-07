@@ -9,8 +9,8 @@ A dual-Arduino musical learning keyboard project. Two Arduinos communicate via s
 
 1. **Wire the hardware** - See [Wiring Guide](EN/MANUAL.md#wiring)
 2. **Upload code**:
-   - `EN/ai_garbo/logic_part2/logic_part2.ino` → Logic Arduino (disconnect Pin 0 first!)
-   - `EN/ai_garbo/music_player_2/music_player_2.ino` → Music Arduino
+   - `EN/logic_part2/logic_part2.ino` → Logic Arduino (disconnect Pin 0 first!)
+   - `EN/music_player_2/music_player_2.ino` → Music Arduino
 3. **Power both** - Welcome screen → Song Select menu appears
 
 ## Documentation
@@ -46,6 +46,8 @@ Consecutive identical notes (e.g., Wolf3D's G4×3) are automatically merged into
 | Buzzer | Logic: A0 |
 | Potentiometer (LCD contrast) | Logic: VO pin |
 
+## Credits
+Started by C0m3b4ck on August 31st, finished September 5th. Project with AI assistance (though strong human guidance).
 ## License
 
 APL 2.0
